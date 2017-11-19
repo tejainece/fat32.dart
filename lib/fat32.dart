@@ -4,5 +4,4 @@
 library fat32;
 
 export 'src/fat32_base.dart';
-
-// TODO: Export any libraries intended for clients of this package.
+export 'src/backend/backend.dart';
