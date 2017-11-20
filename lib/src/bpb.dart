@@ -1,4 +1,27 @@
 import 'dart:typed_data';
+import 'package:hexview/hexview.dart';
+
+class BadBpb {
+  final int id;
+
+  final String message;
+
+  const BadBpb(this.id, this.message);
+
+  static const BadBpb badJumpBoot =
+  const BadBpb(0, 'Bad BPB: Invalid jump boot field!');
+
+  static const BadBpb invalidReservedSectorCount =
+  const BadBpb(1, 'Bad BPB: Invalid reserved sector count field!');
+
+  static const BadBpb invalidMedia =
+  const BadBpb(1, 'Bad BPB: Invalid media field!');
+
+  static const BadBpb invalidBootSignature =
+  const BadBpb(1, 'Bad BPB: Invalid boot signature!');
+
+  String toString() => message;
+}
 
 ///
 class Bpb {
@@ -8,6 +31,9 @@ class Bpb {
     if (buffer.lengthInBytes != 512)
       throw new Exception('BPB must be 512 bytes long!');
   }
+
+  factory Bpb.fromUInt8List(Uint8List list) =>
+      new Bpb(new ByteData.view(list.buffer));
 
   List<int> get jumpBoot =>
       new List<int>.generate(3, (i) => buffer.getUint8(0 + i));
@@ -34,6 +60,7 @@ class Bpb {
   /// The total sectors in the logical volume. If greater than, this field is 0 and
   /// [totalSectors32] will hold the real total sectors in volume.
   int get totalSectors16 => buffer.getUint16(19, Endianness.LITTLE_ENDIAN);
+
   int get media => buffer.getUint8(21);
 
   /// Number of sectors per FAT. Not used in FAT32.
@@ -106,4 +133,38 @@ class Bpb {
 
   int get firstDataSector =>
       reservedSectorCount + (numFATs * fatSize) + rootDirSectors;
+
+  String toString() {
+    final sb = new StringBuffer();
+
+    sb.writeln('Jump Boot: ${Hex.hex8List(jumpBoot)}');
+    sb.writeln('OEM name: ${new String.fromCharCodes(oemName)}');
+    sb.writeln('Bytes/Sector: $bytePerSector');
+    sb.writeln('Sectors/Cluster: $sectorsPerCluster');
+    sb.writeln('Reserved sector count: $reservedSectorCount');
+    sb.writeln('# FAT copies: $numFATs');
+    sb.writeln('Root entry count: $rootEntryCount');
+    sb.writeln('# Sectors16: $totalSectors16');
+    sb.writeln('Media: $media');
+    sb.writeln('Sectors/FAT16: $fatSize16');
+    sb.writeln('Sectors/Track: $sectorsPerTrack');
+    sb.writeln('# heads: $numberOfHeads');
+    sb.writeln('# hidden sectors: $hiddenSectors');
+    sb.writeln('# Sectors32: $totalSectors32');
+    sb.writeln('Sectors/FAT32: $fatSize32');
+    sb.writeln('Ext flags: $extFlags');
+    sb.writeln('Version: $fsVer');
+    sb.writeln('Root cluster: $rootCluster');
+    sb.writeln('Info: $fsInfo');
+    sb.writeln('Backup boot sector: $bkBootSec');
+    sb.writeln('Drv num: $drvNum');
+    sb.writeln('Boot signature: $bootSig');
+    sb.writeln('Volume id: ${Hex.hex32(volId)}');
+    sb.writeln('Volume label: ${new String.fromCharCodes(volLab)}');
+    sb.writeln('File system type: ${Hex.hex8List(filSysType)}');
+    sb.writeln('Signature: 0x${Hex.hex16(signature)}');
+    // TODO
+
+    return sb.toString();
+  }
 }

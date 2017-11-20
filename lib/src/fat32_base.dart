@@ -1,10 +1,8 @@
 import 'dart:async';
-import 'package:meta/meta.dart';
 import 'dart:typed_data';
 
-import 'bpb.dart';
-
 import 'package:fat32/fat32.dart';
+import 'info/info.dart';
 
 class Fat32 {
   static const int badCluster = 0x0FFFFFF7;
@@ -16,11 +14,11 @@ class Fat32 {
   /// Information about the Fat32 file system read from boot record
   Fat32Info _info;
 
-  Fat32._(this.backend);
+  Fat32(this.backend);
 
   Future init() async {
     if (_info == null) {
-      final Int8List rec = await backend.readSector(0);
+      final Uint8List rec = await backend.readSector(0);
       _info = await new Fat32Info.read(rec);
     }
   }
@@ -28,73 +26,6 @@ class Fat32 {
   /// Opens file with path [filename] with file mode [mode]
   Future<Fat32File> open(String filename, Fat32FileMode mode) async {
     // TODO
-  }
-}
-
-class BadBpb {
-  final int id;
-
-  final String message;
-
-  const BadBpb(this.id, this.message);
-
-  static const BadBpb badJumpBoot =
-      const BadBpb(0, 'Bad BPB: Invalid jump boot field!');
-
-  static const BadBpb invalidReservedSectorCount =
-      const BadBpb(1, 'Bad BPB: Invalid reserved sector count field!');
-
-  static const BadBpb invalidMedia =
-      const BadBpb(1, 'Bad BPB: Invalid media field!');
-
-  String toString() => message;
-}
-
-/// Information about FAT32 filesystem read from the boot sector
-class Fat32Info {
-  final int sectorsPerCluster;
-
-  final int firstDataSector;
-
-  final int totalSectors;
-
-  final int reservedSectors;
-
-  final int currentSectors;
-
-  final int sectorFlags;
-
-  /// Create an instance of [Fat32Info] from constituent fields
-  const Fat32Info(
-      {@required this.sectorsPerCluster,
-      @required this.firstDataSector,
-      @required this.totalSectors,
-      @required this.reservedSectors,
-      @required this.currentSectors,
-      @required this.sectorFlags});
-
-  factory Fat32Info.read(Int8List buffer) {
-    final bpb = new Bpb(new ByteData.view(buffer.buffer));
-
-    // TODO Validate
-    // Check for correct JumpBoot field
-    if (!bpb.isValidJumpBoot) throw BadBpb.badJumpBoot;
-
-    // TODO support other sector sizes
-    if (bpb.bytePerSector != 512)
-      throw new UnsupportedError('Only bytes per sector of 512 are allowed!');
-
-    if (bpb.reservedSectorCount == 0) throw BadBpb.invalidReservedSectorCount;
-
-    if (bpb.media != 0xF0 && (bpb.media < 0xF8 || bpb.media > 0xFF))
-      throw BadBpb.invalidMedia;
-    // TODO
-
-    return new Fat32Info(
-        sectorsPerCluster: bpb.sectorsPerCluster,
-        firstDataSector: bpb.firstDataSector,
-        totalSectors: bpb.totalSectors,
-        reservedSectors: bpb.reservedSectorCount);
   }
 }
 
