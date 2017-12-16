@@ -4,6 +4,20 @@ import 'dart:typed_data';
 import 'package:fat32/fat32.dart';
 import 'info/info.dart';
 
+class Reader {
+  final Backend backend;
+
+  final int startCluster;
+
+  Reader(this.backend, this.startCluster);
+
+  List<int> read(int position, int length) {
+    // TODO
+  }
+
+  // TODO
+}
+
 class Fat32 {
   static const int badCluster = 0x0FFFFFF7;
 

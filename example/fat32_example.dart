@@ -5,7 +5,7 @@ import 'package:hexview/hexview.dart';
 import 'package:fat32/src/bpb.dart';
 
 main() async {
-	final file = new File('./example/data/1.fat');
+	final file = new File('./data/1.fat');
 	if(!file.existsSync()) throw new Exception();
 	final BackendFile bk = await BackendFile.make(file);
 	final Uint8List data = await bk.readSector(0);
