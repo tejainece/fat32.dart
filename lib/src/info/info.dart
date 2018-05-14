@@ -6,13 +6,17 @@ import '../utils/str.dart';
 
 /// Information about FAT32 filesystem read from the boot sector
 class Fat32Info {
-  final int sectorsPerCluster;
-
-  final int firstDataSector;
-
+  /// Total number of sectors in this FAT32 partition
   final int totalSectors;
 
+  /// Reserved sectors in this FAT32 partition
   final int reservedSectors;
+
+  /// Number of sectors per cluster in this FAT32 partition
+  final int sectorsPerCluster;
+
+  /// First data sector
+  final int firstDataSector;
 
   final int currentSectors;
 
@@ -20,12 +24,31 @@ class Fat32Info {
 
   /// Create an instance of [Fat32Info] from constituent fields
   const Fat32Info(
-      {@required this.sectorsPerCluster,
-      @required this.firstDataSector,
-      @required this.totalSectors,
+      {@required this.totalSectors,
       @required this.reservedSectors,
+      @required this.sectorsPerCluster,
+      @required this.firstDataSector,
       @required this.currentSectors,
       @required this.sectorFlags});
+
+  factory Fat32Info.fromBpb(Bpb bpb) {
+    return new Fat32Info(
+        totalSectors: bpb.totalSectors,
+        reservedSectors: bpb.reservedSectorCount,
+        sectorsPerCluster: bpb.sectorsPerCluster,
+        firstDataSector: bpb.firstDataSector);
+  }
+
+  String toString() {
+    final sb = new StringBuffer();
+
+    sb.writeln('Sectors/Cluster: $sectorsPerCluster');
+    sb.writeln('First data sector: $firstDataSector');
+    sb.writeln('# Sectors: $totalSectors');
+    sb.writeln('Reserved sectors: $reservedSectors');
+
+    return sb.toString();
+  }
 
   factory Fat32Info.read(Uint8List buffer) {
     final bpb = new Bpb(new ByteData.view(buffer.buffer));
@@ -45,23 +68,6 @@ class Fat32Info {
 
     if (bpb.signature != 0xAA55) throw BadBpb.invalidBootSignature;
     // TODO
-
-    return new Fat32Info(
-        sectorsPerCluster: bpb.sectorsPerCluster,
-        firstDataSector: bpb.firstDataSector,
-        totalSectors: bpb.totalSectors,
-        reservedSectors: bpb.reservedSectorCount);
-  }
-
-  String toString() {
-    final sb = new StringBuffer();
-
-    sb.writeln('Sectors/Cluster: $sectorsPerCluster');
-    sb.writeln('First data sector: $firstDataSector');
-    sb.writeln('# Sectors: $totalSectors');
-    sb.writeln('Reserved sectors: $reservedSectors');
-
-    return sb.toString();
   }
 }
 
@@ -81,7 +87,7 @@ class FatEntry {
   List<int> get extension =>
       new List<int>.generate(3, (i) => buffer.getUint8(8 + i));
 
-  int get attributes =>  buffer.getUint8(11);
+  int get attributes => buffer.getUint8(11);
 
   int get time => buffer.getUint16(22, Endianness.LITTLE_ENDIAN);
 

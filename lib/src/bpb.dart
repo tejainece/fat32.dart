@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:typed_data';
+import 'package:meta/meta.dart';
 import 'package:hexview/hexview.dart';
+import 'package:fat32/src/backend/backend.dart';
 
 class BadBpb {
   final int id;
@@ -9,31 +12,78 @@ class BadBpb {
   const BadBpb(this.id, this.message);
 
   static const BadBpb badJumpBoot =
-  const BadBpb(0, 'Bad BPB: Invalid jump boot field!');
+      const BadBpb(0, 'Bad BPB: Invalid jump boot field!');
 
   static const BadBpb invalidReservedSectorCount =
-  const BadBpb(1, 'Bad BPB: Invalid reserved sector count field!');
+      const BadBpb(1, 'Bad BPB: Invalid reserved sector count field!');
 
   static const BadBpb invalidMedia =
-  const BadBpb(1, 'Bad BPB: Invalid media field!');
+      const BadBpb(1, 'Bad BPB: Invalid media field!');
 
   static const BadBpb invalidBootSignature =
-  const BadBpb(1, 'Bad BPB: Invalid boot signature!');
+      const BadBpb(1, 'Bad BPB: Invalid boot signature!');
 
   String toString() => message;
 }
 
-///
+class DriveInfo {
+  final int sectorsPerTrack;
+
+  final int numberOfHeads;
+
+  DriveInfo(this.sectorsPerTrack, this.numberOfHeads);
+}
+
 class Bpb {
+  // Number of bytes per sector
+  final int bytePerSector;
+
+  /// Number of sectors per cluster
+  final int sectorsPerCluster;
+
+  /// Number of reserved sectors
+  final int reservedSectorCount;
+
+  /// Number of copies of FATs on the storage media
+  final int numFatCopies;
+
+  /// Number of directory entries
+  final int rootEntryCount;
+
+  final int totalSectors;
+
+  final int sectorsPerFat;
+
+  final int rootCluster;
+
+  final int volumeId;
+
+  final DriveInfo driveInfo;
+
+  const Bpb({
+    @required this.bytePerSector,
+    @required this.sectorsPerCluster,
+    @required this.reservedSectorCount,
+    @required this.numFatCopies,
+    @required this.rootEntryCount,
+    @required this.totalSectors,
+    @required this.sectorsPerFat,
+  });
+
+  factory Bpb.parse(Uint8List list) => new BpbParser.fromUInt8List(list).toBpb;
+}
+
+///
+class BpbParser {
   final ByteData buffer;
 
-  Bpb(this.buffer) {
+  BpbParser(this.buffer) {
     if (buffer.lengthInBytes != 512)
       throw new Exception('BPB must be 512 bytes long!');
   }
 
-  factory Bpb.fromUInt8List(Uint8List list) =>
-      new Bpb(new ByteData.view(list.buffer));
+  factory BpbParser.fromUInt8List(Uint8List list) =>
+      new BpbParser(new ByteData.view(list.buffer));
 
   List<int> get jumpBoot =>
       new List<int>.generate(3, (i) => buffer.getUint8(0 + i));
@@ -107,6 +157,7 @@ class Bpb {
   /// Volume label string
   List<int> get volLab =>
       new List<int>.generate(11, (i) => buffer.getUint8(71 + i));
+
   List<int> get filSysType =>
       new List<int>.generate(8, (i) => buffer.getUint8(82 + i));
 
@@ -133,6 +184,8 @@ class Bpb {
 
   int get firstDataSector =>
       reservedSectorCount + (numFATs * fatSize) + rootDirSectors;
+
+  Bpb get toBpb => new Bpb(bytePerSector: null, sectorsPerCluster: null);
 
   String toString() {
     final sb = new StringBuffer();
@@ -166,5 +219,10 @@ class Bpb {
     // TODO
 
     return sb.toString();
+  }
+
+  static Future<BpbParser> readWithBackend(Backend backend) async {
+    final Uint8List data = await backend.readSector(0);
+    return new BpbParser.fromUInt8List(data);
   }
 }
