@@ -12,34 +12,30 @@ abstract class Backend {
 
 class BackendFile extends Backend {
 	/// The backend file
-	RandomAccessFile _backend;
+	RandomAccessFile _file;
 
-	BackendFile._(this._backend);
+	BackendFile._(this._file);
 
 	Future<Uint8List> readSector(int sector, {int sectorSize: 512}) async {
-		await _backend.setPosition(sector * sectorSize);
+		await _file.setPosition(sector * sectorSize);
 		final ret = new Uint8List(sectorSize);
-		await _backend.readInto(ret);
+		await _file.readInto(ret);
 		return ret;
 	}
 
 	Future writeSector(int sector, List<int> data, {int sectorSize: 512}) async {
 		if (data.length != sectorSize)
 			throw new UnsupportedError('Data size must match sector size!');
-		await _backend.setPosition(sector * sectorSize);
-		await _backend.writeFrom(data);
+		await _file.setPosition(sector * sectorSize);
+		await _file.writeFrom(data);
 	}
 
 	static Future<BackendFile> make(File file) async {
-		final RandomAccessFile r = await file.open(mode: FileMode.APPEND);
+		final RandomAccessFile r = await file.open(mode: FileMode.append);
 		return new BackendFile._(r);
 	}
 
 	static Future<Fat32> mount(File file) async {
-		final RandomAccessFile r = await file.open(mode: FileMode.APPEND);
-		final b = new BackendFile._(r);
-		final ret = new Fat32(b);
-		await ret.init();
-		return ret;
+		return await Fat32.mount(await BackendFile.make(file));
 	}
 }

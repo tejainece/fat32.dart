@@ -6,52 +6,54 @@ import '../utils/str.dart';
 
 /// Information about FAT32 filesystem read from the boot sector
 class Fat32Info {
+  // Number of bytes per sector
+  final int bytesPerSector;
+
+  /// Number of sectors per cluster
+  final int sectorsPerCluster;
+
+  /// Reserved sectors in this FAT32 partition
+  final int numReservedSectors;
+
+  /// Number of copies of FATs on the storage media
+  final int numFatCopies;
+
   /// Total number of sectors in this FAT32 partition
   final int totalSectors;
 
-  /// Reserved sectors in this FAT32 partition
-  final int reservedSectors;
+  /// Sectors per file allocation table
+  final int sectorsPerFat;
 
-  /// Number of sectors per cluster in this FAT32 partition
-  final int sectorsPerCluster;
+  /// Number of the root cluster
+  final int rootCluster;
 
-  /// First data sector
-  final int firstDataSector;
-
-  final int currentSectors;
-
-  final int sectorFlags;
+  // TODO final int currentSectors;
+  // TODO final int sectorFlags;
 
   /// Create an instance of [Fat32Info] from constituent fields
   const Fat32Info(
-      {@required this.totalSectors,
-      @required this.reservedSectors,
+      {@required this.bytesPerSector,
       @required this.sectorsPerCluster,
-      @required this.firstDataSector,
-      @required this.currentSectors,
-      @required this.sectorFlags});
+      @required this.numReservedSectors,
+      @required this.numFatCopies,
+      @required this.totalSectors,
+      @required this.sectorsPerFat,
+      @required this.rootCluster});
 
   factory Fat32Info.fromBpb(Bpb bpb) {
     return new Fat32Info(
-        totalSectors: bpb.totalSectors,
-        reservedSectors: bpb.reservedSectorCount,
-        sectorsPerCluster: bpb.sectorsPerCluster,
-        firstDataSector: bpb.firstDataSector);
-  }
-
-  String toString() {
-    final sb = new StringBuffer();
-
-    sb.writeln('Sectors/Cluster: $sectorsPerCluster');
-    sb.writeln('First data sector: $firstDataSector');
-    sb.writeln('# Sectors: $totalSectors');
-    sb.writeln('Reserved sectors: $reservedSectors');
-
-    return sb.toString();
+      bytesPerSector: bpb.bytePerSector,
+      sectorsPerCluster: bpb.sectorsPerCluster,
+      numReservedSectors: bpb.reservedSectorCount,
+      numFatCopies: bpb.numFATs,
+      totalSectors: bpb.totalSectors,
+      sectorsPerFat: bpb.fatSize,
+      rootCluster: bpb.rootCluster,
+    );
   }
 
   factory Fat32Info.read(Uint8List buffer) {
-    final bpb = new Bpb(new ByteData.view(buffer.buffer));
+    final bpb = new Bpb.fromUInt8List(buffer);
 
     // TODO Validate
     // Check for correct JumpBoot field
@@ -67,7 +69,33 @@ class Fat32Info {
       throw BadBpb.invalidMedia;
 
     if (bpb.signature != 0xAA55) throw BadBpb.invalidBootSignature;
-    // TODO
+
+    // TODO other validations
+
+    return new Fat32Info.fromBpb(bpb);
+  }
+
+  int get numDataSectors => totalSectors - firstDataSector;
+
+  int get clusterCount => numDataSectors ~/ sectorsPerCluster;
+
+  /// Sector number of the first data sector
+  int get firstDataSector =>
+      numReservedSectors + (numFatCopies * sectorsPerFat);
+
+  int firstSectorOf(int cluster) {
+    return firstDataSector + ((cluster - 2) * sectorsPerCluster);
+  }
+
+  String toString() {
+    final sb = new StringBuffer();
+
+    sb.writeln('Sectors/Cluster: $sectorsPerCluster');
+    sb.writeln('First data sector: $firstDataSector');
+    sb.writeln('# Sectors: $totalSectors');
+    sb.writeln('Reserved sectors: $numReservedSectors');
+
+    return sb.toString();
   }
 }
 
@@ -89,13 +117,23 @@ class FatEntry {
 
   int get attributes => buffer.getUint8(11);
 
-  int get time => buffer.getUint16(22, Endianness.LITTLE_ENDIAN);
+  int get creationTime => buffer.getUint16(14, Endian.little);
 
-  int get date => buffer.getUint16(24, Endianness.LITTLE_ENDIAN);
+  int get creationDate => buffer.getUint16(16, Endian.little);
 
-  int get cluster => buffer.getUint16(26, Endianness.LITTLE_ENDIAN);
+  int get lastAccessDate => buffer.getUint16(18, Endian.little);
 
-  int get size => buffer.getUint32(28, Endianness.LITTLE_ENDIAN);
+  int get clusterHi => buffer.getUint16(20, Endian.little);
+
+  int get writeTime => buffer.getUint16(22, Endian.little);
+
+  int get writeDate => buffer.getUint16(24, Endian.little);
+
+  int get clusterLo => buffer.getUint16(26, Endian.little);
+
+  int get size => buffer.getUint32(28, Endian.little);
+
+  int get cluster => (clusterHi << 16) | clusterLo;
 
   String get filenameStr => stringFromList(filename);
 
@@ -103,5 +141,61 @@ class FatEntry {
 
   String get fullname => filenameStr + '.' + extensionStr;
 
-  // TODO filename metadata
+  bool get isReadOnly => (attributes & FileAttributesMask.readOnly.id) != 0;
+
+  bool get isHidden => (attributes & FileAttributesMask.hidden.id) != 0;
+
+  bool get isVolumeId => (attributes & FileAttributesMask.volumeLabel.id) != 0;
+
+  bool get isDir => (attributes & FileAttributesMask.readOnly.id) != 0;
+
+  bool get isFile => (attributes & FileAttributesMask.directory.id) == 0;
+
+  bool get isArchive => (attributes & FileAttributesMask.archive.id) != 0;
+
+  bool get isSystemFile => (attributes & FileAttributesMask.system.id) != 0;
+}
+
+class FileAttributesMask {
+  final int id;
+
+  final String name;
+
+  const FileAttributesMask(this.id, this.name);
+
+  static const FileAttributesMask readOnly =
+      const FileAttributesMask(1, 'read only');
+
+  static const FileAttributesMask hidden =
+      const FileAttributesMask(2, 'hidden');
+
+  static const FileAttributesMask system =
+      const FileAttributesMask(4, 'system');
+
+  static const FileAttributesMask volumeLabel =
+      const FileAttributesMask(8, 'volume label');
+
+  static const FileAttributesMask directory =
+      const FileAttributesMask(16, 'directory');
+
+  static const FileAttributesMask archive =
+      const FileAttributesMask(32, 'archive');
+
+  static const FileAttributesMask device =
+      const FileAttributesMask(64, 'device');
+
+  static const FileAttributesMask unused =
+      const FileAttributesMask(128, 'unused');
+}
+
+DateTime parseFatDateTime(int date, [int time = 0]) {
+  int year = (date & 0xFE00) >> 9;
+  int month = (date & 0x1E0) >> 5;
+  int day = date & 0x1F;
+
+  int hour = (time & 0xF100) >> 11;
+  int minute = (time & 0x7E0) >> 5;
+  int second = (time & 0x1F) * 2;
+
+  return new DateTime(year, month, day, hour, minute, second);
 }

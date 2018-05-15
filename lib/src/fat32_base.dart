@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:meta/meta.dart';
 
 import 'package:fat32/fat32.dart';
 import 'info/info.dart';
@@ -23,99 +24,116 @@ class Fat32 {
 
   static const int endOfCluster = 0x0FFFFFF8;
 
-  Backend backend;
+  final Backend backend;
 
   /// Information about the Fat32 file system read from boot record
-  Fat32Info _info;
+  final Fat32Info info;
 
-  Fat32(this.backend);
-
-  Future init() async {
-    if (_info == null) {
-      final Uint8List rec = await backend.readSector(0);
-      _info = await new Fat32Info.read(rec);
-    }
-  }
+  Fat32(this.backend, this.info);
 
   /// Opens file with path [filename] with file mode [mode]
-  Future<Fat32File> open(String filename, Fat32FileMode mode) async {
+  Future<Fat32Item> open(String filename, Fat32FileMode mode) async {
     // TODO
+  }
+
+  /// Non-recursively finds file or directory named [name] in given directory
+  /// [dir]
+  Future<dynamic> findEntryInDirectory(String name) {}
+
+  static Future<Fat32> mount(Backend backend) async {
+    final Uint8List rec = await backend.readSector(0);
+    final info = await new Fat32Info.read(rec);
+    return new Fat32(backend, info);
   }
 }
 
-class Fat32File {
+class Fat32Item {
+  FileStat stat;
+
   int parentStartCluster;
 
   int startCluster;
 
-  int currentClusterIdx;
-
-  int currentCluster;
-
-  int currentSector;
-
-  int currentByte;
-
-  int pos;
+  FileContentPointer state;
 
   Fat32FileFlag flags;
 
-  Fat32FileAttributes attributes;
-
   Fat32FileMode mode;
-
-  int size;
-
-  Int8List filename;
 }
 
-class Fat32FileAttributes {
-  final int id;
+class FileContentPointer {
+  final Fat32Info fatInfo;
 
-  final String name;
+  /// Current cluster index
+  int currentCluster;
 
-  const Fat32FileAttributes(this.id, this.name);
+  /// Byte offset of the pointer
+  int pos;
 
-  bool operator ==(other) {
-    if (other is int) {
-      return id == other;
-    } else if (other is Fat32FileAttributes) {
-      return other.id == id;
-    }
-    return false;
+  FileContentPointer(this.fatInfo, {this.currentCluster: 2, this.pos: 0});
+
+  /// Current sector
+  int get currentSector =>
+      fatInfo.firstSectorOf(currentCluster) + sectorInCluster;
+
+  int get sectorInCluster => byteInCluster ~/ fatInfo.bytesPerSector;
+
+  /// Current byte inside current cluster
+  int get byteInCluster =>
+      pos % (fatInfo.sectorsPerCluster * fatInfo.bytesPerSector);
+
+  int get currentClusterInFile =>
+      pos ~/ (fatInfo.sectorsPerCluster * fatInfo.bytesPerSector);
+}
+
+class FileStat {
+  final List<int> filename;
+
+  final DateTime creationTime;
+
+  final DateTime writeTime;
+
+  final DateTime lastAccessTime;
+
+  final int size;
+
+  final bool isReadOnly;
+
+  final bool isHidden;
+
+  final bool isDir;
+
+  final bool isSystem;
+
+  bool get isFile => !isDir;
+
+  // TODO final bool isArchive;
+
+  FileStat({
+    @required this.filename,
+    @required this.creationTime,
+    @required this.writeTime,
+    @required this.lastAccessTime,
+    @required this.size,
+    @required this.isReadOnly,
+    @required this.isHidden,
+    @required this.isDir,
+    @required this.isSystem,
+  });
+
+  factory FileStat.fromFatEntry(FatEntry entry) {
+    // TODO long filename
+    return new FileStat(
+        filename: entry.filename,
+        creationTime: parseFatDateTime(entry.creationDate, entry.creationTime),
+        writeTime: parseFatDateTime(entry.writeDate, entry.writeTime),
+        lastAccessTime: parseFatDateTime(entry.lastAccessDate),
+        size: entry.size,
+        isReadOnly: entry.isReadOnly,
+        isHidden: entry.isHidden,
+        isDir: entry.isDir,
+        isSystem: entry.isSystemFile);
   }
-
-  bool get isReadOnly => (id & readOnly.id) != 0;
-
-  bool get isHidden => (id & hidden.id) != 0;
-
-  bool get isDir => (id & directory.id) != 0;
-
-  bool get isFile => (id & directory.id) == 0;
-
-  static const Fat32FileAttributes readOnly =
-      const Fat32FileAttributes(1, 'read only');
-
-  static const Fat32FileAttributes hidden =
-      const Fat32FileAttributes(2, 'hidden');
-
-  static const Fat32FileAttributes system =
-      const Fat32FileAttributes(4, 'system');
-
-  static const Fat32FileAttributes volumeLabel =
-      const Fat32FileAttributes(8, 'volume label');
-
-  static const Fat32FileAttributes directory =
-      const Fat32FileAttributes(16, 'directory');
-
-  static const Fat32FileAttributes archive =
-      const Fat32FileAttributes(32, 'archive');
-
-  static const Fat32FileAttributes device =
-      const Fat32FileAttributes(64, 'device');
-
-  static const Fat32FileAttributes unused =
-      const Fat32FileAttributes(128, 'unused');
 }
 
 class Fat32FileMode {

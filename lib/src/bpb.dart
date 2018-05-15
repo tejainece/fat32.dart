@@ -4,86 +4,17 @@ import 'package:meta/meta.dart';
 import 'package:hexview/hexview.dart';
 import 'package:fat32/src/backend/backend.dart';
 
-class BadBpb {
-  final int id;
-
-  final String message;
-
-  const BadBpb(this.id, this.message);
-
-  static const BadBpb badJumpBoot =
-      const BadBpb(0, 'Bad BPB: Invalid jump boot field!');
-
-  static const BadBpb invalidReservedSectorCount =
-      const BadBpb(1, 'Bad BPB: Invalid reserved sector count field!');
-
-  static const BadBpb invalidMedia =
-      const BadBpb(1, 'Bad BPB: Invalid media field!');
-
-  static const BadBpb invalidBootSignature =
-      const BadBpb(1, 'Bad BPB: Invalid boot signature!');
-
-  String toString() => message;
-}
-
-class DriveInfo {
-  final int sectorsPerTrack;
-
-  final int numberOfHeads;
-
-  DriveInfo(this.sectorsPerTrack, this.numberOfHeads);
-}
-
-class Bpb {
-  // Number of bytes per sector
-  final int bytePerSector;
-
-  /// Number of sectors per cluster
-  final int sectorsPerCluster;
-
-  /// Number of reserved sectors
-  final int reservedSectorCount;
-
-  /// Number of copies of FATs on the storage media
-  final int numFatCopies;
-
-  /// Number of directory entries
-  final int rootEntryCount;
-
-  final int totalSectors;
-
-  final int sectorsPerFat;
-
-  final int rootCluster;
-
-  final int volumeId;
-
-  final DriveInfo driveInfo;
-
-  const Bpb({
-    @required this.bytePerSector,
-    @required this.sectorsPerCluster,
-    @required this.reservedSectorCount,
-    @required this.numFatCopies,
-    @required this.rootEntryCount,
-    @required this.totalSectors,
-    @required this.sectorsPerFat,
-  });
-
-  factory Bpb.parse(Uint8List list) => new BpbParser.fromUInt8List(list).toBpb;
-}
-
 ///
-class BpbParser {
+class Bpb {
   final ByteData buffer;
 
-  BpbParser(this.buffer) {
+  Bpb(this.buffer) {
     if (buffer.lengthInBytes != 512)
       throw new Exception('BPB must be 512 bytes long!');
   }
 
-  factory BpbParser.fromUInt8List(Uint8List list) =>
-      new BpbParser(new ByteData.view(list.buffer));
+  factory Bpb.fromUInt8List(Uint8List list) =>
+      new Bpb(new ByteData.view(list.buffer));
 
   List<int> get jumpBoot =>
       new List<int>.generate(3, (i) => buffer.getUint8(0 + i));
@@ -93,58 +24,58 @@ class BpbParser {
       new List<int>.generate(8, (i) => buffer.getUint8(3 + i));
 
   /// Number of bytes per sector
-  int get bytePerSector => buffer.getUint16(11, Endianness.LITTLE_ENDIAN);
+  int get bytePerSector => buffer.getUint16(11, Endian.little);
 
   /// Number of sectors per cluster
   int get sectorsPerCluster => buffer.getUint8(13);
 
   /// Number of reserved sectors
-  int get reservedSectorCount => buffer.getUint16(14, Endianness.LITTLE_ENDIAN);
+  int get reservedSectorCount => buffer.getUint16(14, Endian.little);
 
   /// Number of copies of FATs on the storage media
   int get numFATs => buffer.getUint8(16);
 
   /// Number of directory entries (must be set so that the root directory occupies entire sectors)
-  int get rootEntryCount => buffer.getUint16(17, Endianness.LITTLE_ENDIAN);
+  int get rootEntryCount => buffer.getUint16(17, Endian.little);
 
   /// The total sectors in the logical volume. If greater than, this field is 0 and
   /// [totalSectors32] will hold the real total sectors in volume.
-  int get totalSectors16 => buffer.getUint16(19, Endianness.LITTLE_ENDIAN);
+  int get totalSectors16 => buffer.getUint16(19, Endian.little);
 
   int get media => buffer.getUint8(21);
 
   /// Number of sectors per FAT. Not used in FAT32.
-  int get fatSize16 => buffer.getUint16(22, Endianness.LITTLE_ENDIAN);
+  int get fatSize16 => buffer.getUint16(22, Endian.little);
 
   /// Number of sectors per track.
-  int get sectorsPerTrack => buffer.getUint16(24, Endianness.LITTLE_ENDIAN);
+  int get sectorsPerTrack => buffer.getUint16(24, Endian.little);
 
   /// Number of heads or sides on the storage media.
-  int get numberOfHeads => buffer.getUint16(26, Endianness.LITTLE_ENDIAN);
+  int get numberOfHeads => buffer.getUint16(26, Endian.little);
 
   /// Number of hidden sectors.
-  int get hiddenSectors => buffer.getUint32(28, Endianness.LITTLE_ENDIAN);
+  int get hiddenSectors => buffer.getUint32(28, Endian.little);
 
   /// The total sectors in the logical volume. Only valid if [totalSectors16] is 0
-  int get totalSectors32 => buffer.getUint32(32, Endianness.LITTLE_ENDIAN);
+  int get totalSectors32 => buffer.getUint32(32, Endian.little);
 
   /// Sectors per FAT. The size of the FAT in sectors.
-  int get fatSize32 => buffer.getUint32(36, Endianness.LITTLE_ENDIAN);
+  int get fatSize32 => buffer.getUint32(36, Endian.little);
 
   /// Flags
-  int get extFlags => buffer.getUint16(40, Endianness.LITTLE_ENDIAN);
+  int get extFlags => buffer.getUint16(40, Endian.little);
 
   /// FAT version number
-  int get fsVer => buffer.getUint16(42, Endianness.LITTLE_ENDIAN);
+  int get fsVer => buffer.getUint16(42, Endian.little);
 
   /// Cluster number of root directory
-  int get rootCluster => buffer.getUint32(44, Endianness.LITTLE_ENDIAN);
+  int get rootCluster => buffer.getUint32(44, Endian.little);
 
   /// The sector number of the FSInfo structure.
-  int get fsInfo => buffer.getUint16(48, Endianness.LITTLE_ENDIAN);
+  int get fsInfo => buffer.getUint16(48, Endian.little);
 
   /// The sector number of the backup boot sector.
-  int get bkBootSec => buffer.getUint16(50, Endianness.LITTLE_ENDIAN);
+  int get bkBootSec => buffer.getUint16(50, Endian.little);
   int get drvNum => buffer.getUint8(64);
 
   /// Signature (must be 0x28 or 0x29).
@@ -152,7 +83,7 @@ class BpbParser {
 
   /// VolumeID 'Serial' number. Used for tracking volumes between computers.
   /// You can ignore this if you want.
-  int get volId => buffer.getUint32(67, Endianness.LITTLE_ENDIAN);
+  int get volId => buffer.getUint32(67, Endian.little);
 
   /// Volume label string
   List<int> get volLab =>
@@ -162,7 +93,7 @@ class BpbParser {
       new List<int>.generate(8, (i) => buffer.getUint8(82 + i));
 
   /// Bootable partition signature
-  int get signature => buffer.getUint16(510, Endianness.LITTLE_ENDIAN);
+  int get signature => buffer.getUint16(510, Endian.little);
 
   /// Validates that [jumpBoot] field is valid
   bool get isValidJumpBoot =>
@@ -175,17 +106,6 @@ class BpbParser {
       ((rootEntryCount * 32) + (bytePerSector - 1)) ~/ bytePerSector;
 
   int get totalSectors => totalSectors16 != 0 ? totalSectors16 : totalSectors32;
-
-  int get dataSectors =>
-      totalSectors -
-      (reservedSectorCount + (numFATs * fatSize) + rootDirSectors);
-
-  int get clusterCount => dataSectors ~/ sectorsPerCluster;
-
-  int get firstDataSector =>
-      reservedSectorCount + (numFATs * fatSize) + rootDirSectors;
-
-  Bpb get toBpb => new Bpb(bytePerSector: null, sectorsPerCluster: null);
 
   String toString() {
     final sb = new StringBuffer();
@@ -221,8 +141,40 @@ class BpbParser {
     return sb.toString();
   }
 
-  static Future<BpbParser> readWithBackend(Backend backend) async {
+  static Future<Bpb> readWithBackend(Backend backend) async {
     final Uint8List data = await backend.readSector(0);
-    return new BpbParser.fromUInt8List(data);
+    return new Bpb.fromUInt8List(data);
   }
 }
+
+class BadBpb {
+  final int id;
+
+  final String message;
+
+  const BadBpb(this.id, this.message);
+
+  static const BadBpb badJumpBoot =
+  const BadBpb(0, 'Bad BPB: Invalid jump boot field!');
+
+  static const BadBpb invalidReservedSectorCount =
+  const BadBpb(1, 'Bad BPB: Invalid reserved sector count field!');
+
+  static const BadBpb invalidMedia =
+  const BadBpb(1, 'Bad BPB: Invalid media field!');
+
+  static const BadBpb invalidBootSignature =
+  const BadBpb(1, 'Bad BPB: Invalid boot signature!');
+
+  String toString() => message;
+}
+
+/*
+class DriveInfo {
+  final int sectorsPerTrack;
+
+  final int numberOfHeads;
+
+  DriveInfo(this.sectorsPerTrack, this.numberOfHeads);
+}
+*/
