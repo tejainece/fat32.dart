@@ -35,7 +35,7 @@ class BackendFile extends Backend {
 		return new BackendFile._(r);
 	}
 
-	static Future<Fat32> mount(File file) async {
-		return await Fat32.mount(await BackendFile.make(file));
+	static Future<Fat32FileSystem> mount(File file) async {
+		return await Fat32FileSystem.mount(await BackendFile.make(file));
 	}
 }

@@ -75,6 +75,8 @@ class Fat32Info {
     return new Fat32Info.fromBpb(bpb);
   }
 
+  int get bytesPerCluster => bytesPerSector * sectorsPerCluster;
+
   int get numDataSectors => totalSectors - firstDataSector;
 
   int get clusterCount => numDataSectors ~/ sectorsPerCluster;
@@ -90,10 +92,13 @@ class Fat32Info {
   String toString() {
     final sb = new StringBuffer();
 
+    sb.writeln('Bytes/Sectors: $bytesPerSector');
     sb.writeln('Sectors/Cluster: $sectorsPerCluster');
     sb.writeln('First data sector: $firstDataSector');
     sb.writeln('# Sectors: $totalSectors');
     sb.writeln('Reserved sectors: $numReservedSectors');
+    sb.writeln('# FATs: $numFatCopies');
+    sb.writeln('# FATs: $sectorsPerFat');
 
     return sb.toString();
   }
@@ -147,13 +152,67 @@ class FatEntry {
 
   bool get isVolumeId => (attributes & FileAttributesMask.volumeLabel.id) != 0;
 
-  bool get isDir => (attributes & FileAttributesMask.readOnly.id) != 0;
+  bool get isDir => (attributes & FileAttributesMask.directory.id) != 0;
 
   bool get isFile => (attributes & FileAttributesMask.directory.id) == 0;
 
   bool get isArchive => (attributes & FileAttributesMask.archive.id) != 0;
 
   bool get isSystemFile => (attributes & FileAttributesMask.system.id) != 0;
+
+  bool get isLongFilename => FileAttributesMask.isLongFilename(attributes);
+
+  LFNEntry get toLFN => new LFNEntry(buffer);
+}
+
+class LFNEntry {
+  final ByteData buffer;
+
+  LFNEntry(this.buffer);
+
+  int get checksum => buffer.getUint8(13);
+
+  bool get isFirst => (buffer.getUint8(0) & 0x40) != 0;
+
+  int get order => (buffer.getUint8(0) & 0x3F);
+
+  int get attributes => buffer.getUint8(11);
+
+  bool get isLongFilename => FileAttributesMask.isLongFilename(attributes);
+
+  void copyAt(List<int> data) {
+    int pos = (order - 1) * 13;
+
+    for(int i = 0; i < 5; i++) {
+      data[pos++] = buffer.getUint16(1 + (i * 2), Endian.little);
+    }
+
+    for(int i = 0; i < 6; i++) {
+      data[pos++] = buffer.getUint16(14 + (i * 2), Endian.little);
+    }
+
+    data[pos++] = buffer.getUint16(28, Endian.little);
+    data[pos++] = buffer.getUint16(30, Endian.little);
+  }
+
+  List<int> get longFilename {
+    final ret = <int>[];
+
+    for(int i = 0; i < 5; i++) {
+      ret.add(buffer.getUint16(1 + (i * 2), Endian.little));
+    }
+
+    for(int i = 0; i < 6; i++) {
+      ret.add(buffer.getUint16(14 + (i * 2), Endian.little));
+    }
+
+    ret.add(buffer.getUint16(28, Endian.little));
+    ret.add(buffer.getUint16(30, Endian.little));
+
+    return ret;
+  }
+
+  static const int numChars = 13;
 }
 
 class FileAttributesMask {
@@ -186,6 +245,12 @@ class FileAttributesMask {
 
   static const FileAttributesMask unused =
       const FileAttributesMask(128, 'unused');
+
+  static int get lfnMask =>
+      readOnly.id | hidden.id | system.id | volumeLabel.id | directory.id;
+
+  static bool isLongFilename(int attributes) =>
+      (attributes & lfnMask) == lfnMask;
 }
 
 DateTime parseFatDateTime(int date, [int time = 0]) {

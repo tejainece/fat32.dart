@@ -136,7 +136,6 @@ class Bpb {
     sb.writeln('Volume label: ${new String.fromCharCodes(volLab)}');
     sb.writeln('File system type: ${Hex.hex8List(filSysType)}');
     sb.writeln('Signature: 0x${Hex.hex16(signature)}');
-    // TODO
 
     return sb.toString();
   }

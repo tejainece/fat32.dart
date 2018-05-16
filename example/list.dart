@@ -7,10 +7,9 @@ import 'package:fat32/src/bpb.dart';
 main() async {
   // The FAT32 formatted binary file
   final file = new File('./data/1.fat');
-  if(!file.existsSync()) throw new Exception();
+  final Fat32FileSystem fat = await BackendFile.mount(file);
 
-  final BackendFile bk = await BackendFile.make(file);
+  print(fat.info);
 
-  final bpb = await Bpb.readWithBackend(bk);
-  print(bpb);
+  print(await fat.list(new Fat32Dir('\\')));
 }
