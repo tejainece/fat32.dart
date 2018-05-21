@@ -140,11 +140,7 @@ class FatEntry {
 
   int get cluster => (clusterHi << 16) | clusterLo;
 
-  String get filenameStr => stringFromList(filename);
-
-  String get extensionStr => stringFromList(extension);
-
-  String get fullname => filenameStr + '.' + extensionStr;
+  String get fullname => stringFromShortFn(filename, extension);
 
   bool get isReadOnly => (attributes & FileAttributesMask.readOnly.id) != 0;
 
@@ -183,11 +179,11 @@ class LFNEntry {
   void copyAt(List<int> data) {
     int pos = (order - 1) * 13;
 
-    for(int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++) {
       data[pos++] = buffer.getUint16(1 + (i * 2), Endian.little);
     }
 
-    for(int i = 0; i < 6; i++) {
+    for (int i = 0; i < 6; i++) {
       data[pos++] = buffer.getUint16(14 + (i * 2), Endian.little);
     }
 
@@ -198,11 +194,11 @@ class LFNEntry {
   List<int> get longFilename {
     final ret = <int>[];
 
-    for(int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++) {
       ret.add(buffer.getUint16(1 + (i * 2), Endian.little));
     }
 
-    for(int i = 0; i < 6; i++) {
+    for (int i = 0; i < 6; i++) {
       ret.add(buffer.getUint16(14 + (i * 2), Endian.little));
     }
 
@@ -246,15 +242,14 @@ class FileAttributesMask {
   static const FileAttributesMask unused =
       const FileAttributesMask(128, 'unused');
 
-  static int get lfnMask =>
-      readOnly.id | hidden.id | system.id | volumeLabel.id | directory.id;
+  static int lfnMask = readOnly.id | hidden.id | system.id | volumeLabel.id;
 
   static bool isLongFilename(int attributes) =>
       (attributes & lfnMask) == lfnMask;
 }
 
 DateTime parseFatDateTime(int date, [int time = 0]) {
-  int year = (date & 0xFE00) >> 9;
+  int year = 1980 + ((date & 0xFE00) >> 9);
   int month = (date & 0x1E0) >> 5;
   int day = date & 0x1F;
 

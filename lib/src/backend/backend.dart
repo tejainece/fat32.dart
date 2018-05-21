@@ -20,6 +20,7 @@ class BackendFile extends Backend {
 		await _file.setPosition(sector * sectorSize);
 		final ret = new Uint8List(sectorSize);
 		await _file.readInto(ret);
+		List<int> d = ret.toList();
 		return ret;
 	}
 
@@ -30,12 +31,12 @@ class BackendFile extends Backend {
 		await _file.writeFrom(data);
 	}
 
-	static Future<BackendFile> make(File file) async {
-		final RandomAccessFile r = await file.open(mode: FileMode.append);
+	static Future<BackendFile> make(File image) async {
+		final RandomAccessFile r = await image.open(mode: FileMode.append);
 		return new BackendFile._(r);
 	}
 
-	static Future<Fat32FileSystem> mount(File file) async {
-		return await Fat32FileSystem.mount(await BackendFile.make(file));
+	static Future<Fat32FileSystem> mount(File image) async {
+		return await Fat32FileSystem.mount(await BackendFile.make(image));
 	}
 }

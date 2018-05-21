@@ -1,8 +1,5 @@
 import 'dart:io';
 import 'package:fat32/fat32.dart';
-import 'dart:typed_data';
-import 'package:hexview/hexview.dart';
-import 'package:fat32/src/bpb.dart';
 
 main() async {
   // The FAT32 formatted binary file
@@ -11,5 +8,5 @@ main() async {
 
   print(fat.info);
 
-  print(await fat.list(new Fat32Dir('\\')));
+  print((await fat.list(new Fat32Dir('\\'))).join(', '));
 }

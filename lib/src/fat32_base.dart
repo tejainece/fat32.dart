@@ -24,13 +24,18 @@ abstract class Fat32Item {
   bool get isDir;
 
   Fat32Dir get parent;
+
+  String get name;
 }
 
 class Fat32File implements Fat32Item {
+  Fat32FileSystem fileSystem;
+
   final List<String> segments;
 
   factory Fat32File(String path) {
-    final List<String> parts = path.split('\\');
+    final List<String> parts =
+        path.split('\\').where((s) => s.isNotEmpty).toList();
     return new Fat32File.fromSegments(parts);
   }
 
@@ -38,27 +43,29 @@ class Fat32File implements Fat32Item {
 
   String get path => '\\' + segments.join('\\');
 
-  Future<bool> get exists {
-    // TODO
-    throw new UnimplementedError();
-  }
+  Future<bool> get exists async => (await stat) != null;
 
-  Future<FileStat> get stat {
-    // TODO
-    throw new UnimplementedError();
-  }
+  Future<FileStat> get stat => fileSystem.stat(this);
 
   bool get isFile => true;
 
   bool get isDir => false;
 
+  String get name => segments.last;
+
   Fat32Dir get parent {
-    // TODO
-    throw new UnimplementedError();
+    if (segments.length < 2) return new Fat32Dir.fromSegments([]);
+    return new Fat32Dir.fromSegments(segments.sublist(0, segments.length - 1));
   }
+
+  String toString() => "File($path)";
+
+  Future<ReadOnlyFileHandle> open() => fileSystem.open(this);
 }
 
 class Fat32Dir implements Fat32Item {
+  Fat32FileSystem fileSystem;
+
   final List<String> segments;
 
   factory Fat32Dir(String path) {
@@ -71,24 +78,24 @@ class Fat32Dir implements Fat32Item {
 
   String get path => '\\' + segments.join('\\');
 
-  Future<bool> get exists {
-    // TODO
-    throw new UnimplementedError();
-  }
+  Future<bool> get exists async => (await stat) != null;
 
-  Future<FileStat> get stat {
-    // TODO
-    throw new UnimplementedError();
-  }
+  Future<FileStat> get stat => fileSystem.stat(this);
 
   bool get isFile => false;
 
   bool get isDir => true;
 
+  String get name => segments.last;
+
   Fat32Dir get parent {
-    // TODO
-    throw new UnimplementedError();
+    if (segments.length < 2) return new Fat32Dir.fromSegments([]);
+    return new Fat32Dir.fromSegments(segments.sublist(0, segments.length - 1));
   }
+
+  String toString() => "Dir($path)";
+
+  Future<List<Fat32Item>> list() => fileSystem.list(this);
 }
 
 class Fat32FileSystem {
@@ -103,6 +110,10 @@ class Fat32FileSystem {
 
   Fat32FileSystem(this.backend, this.info);
 
+  DirHandle __root;
+
+  DirHandle get _root => __root ??= new DirHandle(this, info.rootCluster);
+
   static Future<Fat32FileSystem> mount(Backend backend) async {
     final Uint8List rec = await backend.readSector(0);
     final info = await new Fat32Info.read(rec);
@@ -110,14 +121,15 @@ class Fat32FileSystem {
   }
 
   /// Opens file with path [filename] with file mode [mode]
-  Future<ReadOnlyFileHandle> open(String filename,
+  Future<ReadOnlyFileHandle> open(Fat32File file,
       [Fat32FileMode mode = Fat32FileMode.read]) async {
-    // TODO
+    DirHandle handle = _root;
+    for (String segment in file.parent.segments) {
+      handle = await handle.childDir(segment);
+      if (handle == null) return null;
+    }
+    return handle.childFile(file.name);
   }
-
-  DirHandle __root;
-
-  DirHandle get _root => __root ??= new DirHandle(this, info.rootCluster);
 
   Future<List<Fat32Item>> list(Fat32Dir dir) async {
     DirHandle handle = _root;
@@ -126,6 +138,15 @@ class Fat32FileSystem {
       if (handle == null) return null;
     }
     return handle.list(dir.segments);
+  }
+
+  Future<FileStat> stat(Fat32Item item) async {
+    DirHandle handle = _root;
+    for (String segment in item.parent.segments) {
+      handle = await handle.childDir(segment);
+      if (handle == null) return null;
+    }
+    return handle.childStat(item.name);
   }
 
   /// Returns next cluster of the file given its current cluster
@@ -171,25 +192,18 @@ class DirHandle {
   Future<FileStat> nextEntry() async {
     Uint8List data = new Uint8List(FatEntry.entrySize);
     await read(data);
-    if (data.first == 0) {
-      return null;
-    }
-    if (data.first == 0xE5) {
-      return nextEntry();
-    }
+    int firstData = data.first;
+    if (firstData == 0) return null;
+    if (data.first == 0xE5) return nextEntry();
     FatEntry entry = new FatEntry(new ByteData.view(data.buffer));
     if (!entry.isVolumeId) {
       return new FileStat.fromFatEntry(entry, null);
     }
 
-    if (!entry.isLongFilename) {
-      return nextEntry();
-    }
+    if (!entry.isLongFilename) return nextEntry();
 
     LFNEntry lfn = entry.toLFN;
-    if (!lfn.isFirst) {
-      throw new Exception("Directory is corrupt!");
-    }
+    if (!lfn.isFirst) throw new Exception("Directory is corrupt!");
 
     int order = lfn.order;
     // TODO validate start order
@@ -224,11 +238,13 @@ class DirHandle {
       throw new Exception("Directory is corrupt!");
     }
 
+    /* TODO
     if (_calcChkSum(data) != checksum) {
       throw new Exception("Directory is corrupt!");
     }
+    */
 
-    return new FileStat.fromFatEntry(entry, stringFromList(data));
+    return new FileStat.fromFatEntry(entry, stringFromList(name));
   }
 
   int _calcChkSum(List<int> entry) {
@@ -256,21 +272,57 @@ class DirHandle {
     }
 
     _pos += FatEntry.entrySize;
-    if (_byteInCluster == _fatInfo.bytesPerCluster) {
+    if (_byteInCluster == 0) {
       _currentCluster = await filesystem.getNextCluster(_currentCluster);
     }
   }
 
   Future<DirHandle> childDir(String name) async {
+    name = name.toUpperCase();
     reset();
     FileStat entry = await nextEntry();
     while (entry != null) {
-      if (entry.shortName == name) {
-        return new DirHandle(filesystem, entry.startCluster);
+      if (entry.isDir) {
+        if (entry.shortName == name) {
+          return new DirHandle(filesystem, entry.startCluster);
+        }
+        if (entry.longName == name) {
+          return new DirHandle(filesystem, entry.startCluster);
+        }
       }
-      if (entry.longName == name) {
-        return new DirHandle(filesystem, entry.startCluster);
+      entry = await nextEntry();
+    }
+    return null;
+  }
+
+  Future<ReadOnlyFileHandle> childFile(String name) async {
+    name = name.toUpperCase();
+    reset();
+    FileStat entry = await nextEntry();
+    while (entry != null) {
+      if (entry.isFile) {
+        if (entry.shortName == name) {
+          return new ReadOnlyFileHandle(
+              filesystem, entry.size, entry.startCluster);
+        }
+        if (entry.longName == name) {
+          return new ReadOnlyFileHandle(
+              filesystem, entry.size, entry.startCluster);
+        }
       }
+      entry = await nextEntry();
+    }
+    return null;
+  }
+
+  Future<FileStat> childStat(String name) async {
+    name = name.toUpperCase();
+    reset();
+    FileStat entry = await nextEntry();
+    while (entry != null) {
+      if (entry.shortName == name) return entry;
+      if (entry.longName == name) return entry;
+      entry = await nextEntry();
     }
     return null;
   }
@@ -280,14 +332,13 @@ class DirHandle {
     reset();
     FileStat entry = await nextEntry();
     while (entry != null) {
+      print(entry.filename);
       if (entry.isFile) {
-        // TODO long filename
-        ret.add(
-            new Fat32File.fromSegments(base.toList()..add(entry.shortName)));
+        ret.add(new Fat32File.fromSegments(base.toList()..add(entry.filename)));
       } else {
-        // TODO long filename
-        ret.add(new Fat32Dir.fromSegments(base.toList()..add(entry.shortName)));
+        ret.add(new Fat32Dir.fromSegments(base.toList()..add(entry.filename)));
       }
+      entry = await nextEntry();
     }
     return ret;
   }
@@ -393,13 +444,14 @@ class ReadOnlyFileHandle {
     }
 
     List<int> data = await filesystem.backend.readSector(_currentSector);
+    int ret = data[_pos % _fatInfo.bytesPerSector];
     _pos++;
     if (_pos < size) {
-      if (_byteInCluster == _fatInfo.bytesPerCluster) {
+      if (_byteInCluster == 0) {
         _currentCluster = await filesystem.getNextCluster(_currentCluster);
       }
     }
-    return data[_pos % _fatInfo.bytesPerSector];
+    return ret;
   }
 
   Future<List<int>> read(int length) async {
@@ -409,6 +461,10 @@ class ReadOnlyFileHandle {
     }
     return ret;
   }
+
+  int get remaining => size - _pos;
+
+  bool get isFinished => remaining == 0;
 
   /// Current cluster index
   int _currentCluster;
@@ -427,9 +483,6 @@ class ReadOnlyFileHandle {
   /// Current byte inside current cluster
   int get _byteInCluster =>
       _pos % (_fatInfo.sectorsPerCluster * _fatInfo.bytesPerSector);
-
-  /* int get _currentClusterInFile =>
-      _pos ~/ (_fatInfo.sectorsPerCluster * _fatInfo.bytesPerSector); */
 }
 
 class FileStat {
@@ -475,8 +528,8 @@ class FileStat {
 
   factory FileStat.fromFatEntry(FatEntry entry, String longName) {
     return new FileStat(
-        shortName: entry.filenameStr,
-        longName: longName ?? entry.filenameStr,
+        shortName: entry.fullname,
+        longName: longName,
         creationTime: parseFatDateTime(entry.creationDate, entry.creationTime),
         writeTime: parseFatDateTime(entry.writeDate, entry.writeTime),
         lastAccessTime: parseFatDateTime(entry.lastAccessDate),
