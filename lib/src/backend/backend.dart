@@ -20,7 +20,6 @@ class BackendFile extends Backend {
 		await _file.setPosition(sector * sectorSize);
 		final ret = new Uint8List(sectorSize);
 		await _file.readInto(ret);
-		List<int> d = ret.toList();
 		return ret;
 	}
 
